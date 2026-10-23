@@ -1,0 +1,59 @@
+
+name: Build FutureLauncher APK
+
+on:
+  push:
+    paths:
+      - "FutureLauncher_v8.zip"
+      - ".github/workflows/build-android.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Install Gradle 8.9
+        run: |
+          wget -q https://services.gradle.org/distributions/gradle-8.9-bin.zip -O /tmp/gradle.zip
+          sudo unzip -q /tmp/gradle.zip -d /opt/gradle
+          echo "/opt/gradle/gradle-8.9/bin" >> "$GITHUB_PATH"
+
+      - name: Extract project
+        run: |
+          mkdir -p "$RUNNER_TEMP/project"
+          unzip -o FutureLauncher_v8.zip -d "$RUNNER_TEMP/project"
+
+      - name: Find Android project
+        id: project
+        shell: bash
+        run: |
+          DIR="$(find "$RUNNER_TEMP/project" \( -name settings.gradle -o -name settings.gradle.kts \) -print -quit)"
+          if [ -z "$DIR" ]; then
+            echo "::error::Gradle settings file not found in ZIP"
+            exit 1
+          fi
+          echo "dir=$(dirname "$DIR")" >> "$GITHUB_OUTPUT"
+
+      - name: Build APK
+        working-directory: ${{ steps.project.outputs.dir }}
+        run: gradle assembleDebug --no-daemon --stacktrace
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: FutureLauncher-APK
+          path: ${{ steps.project.outputs.dir }}/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+          retention-days: 14
